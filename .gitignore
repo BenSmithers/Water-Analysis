@@ -172,3 +172,11 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+*.h5
+*.png 
+
+old_data
+meta_history
+from_server
+data
