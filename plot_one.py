@@ -6,19 +6,21 @@ from utils import get_start_times, get_color, get_temperatures, get_event_time, 
 from datetime import datetime
 from scipy.optimize import minimize
 from scipy.interpolate import CubicSpline
+from utils import apply_correction
 import os 
 plt.style.use("wms.mplstyle")
 wavelens = [450, 410, 365, 295, 278, 255]
 
 NMERGE = 1
-FIT_DARKNOISE = False
+FIT_DARKNOISE = True
 TIME_CUT = False 
 PCHANGE = True
 RAW = False
 NEW_DRATE = False
 JUST_PLOT_DRATE =  False
 TPLOT = False  
-GAD = False
+GAD = True
+correction = False
 
 baselines = [
     np.nan, 
@@ -32,7 +34,18 @@ baselines = [
 if GAD:
     baselines = [np.nan, 1.1820821, 0.7887177, 0.3253037, 0.279768, 0.2285] # reverse but pure
 
+
+    # with resin, but without Gd 
     baselines = [np.nan, 1.16484, 0.758492, 0.277763, 0.2188047, 0.124414965]
+
+
+    
+if True:
+    baselines =[
+        np.nan, 1.1502848465930784, 0.7291714208209754, 0.24093727694429143, 
+        0.17412167436851508, 0.08823493414080769
+    ] # baseline after first Gd loading, before second
+
     baselines = [
         np.nan, 1.14840897086328,0.7447017558664221,
         0.2556593826546975, 0.1846610426449705, 0.10193979703149392
@@ -46,12 +59,21 @@ if GAD:
         0.05400655458140932
     ]
 
+    baselines = [
+        np.nan,
+        1.0403869794773686, 
+        0.6590904580273826,
+        0.12407494094631229,
+        0.07425881959242897,
+        0.04817418995625853
+    ]
+
 #start = datetime(year=2025, month=4, day=12, hour=10)
 
 #start = datetime(year=2025, month=4, day=3, hour=15)
 start = datetime(year=2025, month=4, day=5,hour=2 )
-start = datetime(year=2025, month=5, day=23, hour=10)
-end = datetime(year=2026, month=5, day=21, hour=20)
+start = datetime(year=2025, month=5, day=18, hour=17)
+end = datetime(year=2025, month=5, day=18, hour=20)
 
 
 
@@ -65,7 +87,8 @@ files = ["data/picodat_run75_Supply Untreated_various_variousadc_mHz.dat",
          "data/picodat_run87_Supply Untreated_various_variousadc_mHz.dat",
          "data/picodat_run84_Supply Untreated_various_variousadc_mHz.dat"]
 files = ["data/picodat_run89_Supply Untreated_various_variousadc_mHz.dat"]
-files = ["data/picodat_run75_Supply Untreated_various_variousadc_mHz.dat",]
+files = ["data/picodat_run87_Supply Untreated_various_variousadc_mHz.dat",]
+files = ["data/picodat_run95_Supply Untreated_various_variousadc_mHz.dat",]
 
 #files = ["data/picodat_run62_Supply Untreated_365nm_715adc_mHz.dat"]
 #files = ["data/picodat_run61_Supply Untreated_various_variousadc_mHz.dat"]
@@ -133,7 +156,6 @@ for ifile, fname in enumerate(files):
 
         triggers = fold(data[1][mask], NMERGE)
         def find_constant(_mon, _mon_dark, _rec, _rec_dark):
-            print("Fitting?")
             def metric(params):
                 _reflectivity = params[0]
                 _reflectivity2 = params[1]
@@ -157,6 +179,7 @@ for ifile, fname in enumerate(files):
                 "ftol":1e-20
             }
             res = minimize(metric, x0=[1.0, 1.0,], bounds=bounds, options=options)
+            print(res.x)
             return res.x 
         
         monitor = fold(data[2][mask], NMERGE)
@@ -176,7 +199,7 @@ for ifile, fname in enumerate(files):
             #res = [3.8, 3.8]
             #res= [0.75, 0.5]
             res = [0.64, 0.58]
-            print(res)
+            #print(res)
             rec_refl = res[0]
             mon_refl = res[1]
             recmdark = rec_refl*rec_dark 
@@ -185,11 +208,17 @@ for ifile, fname in enumerate(files):
             recmdark = rec_dark 
             monmdark = mon_dark
 
-        
+        if correction:
+            rcor = apply_correction(receiver/triggers, recmdark/triggers)        
+            mcor = apply_correction(monitor/triggers, monmdark/triggers)
+        else:
+            rcor = 1.0 
+            mcor = 1.0
+
         mwaves = average(wave[mask], NMERGE)        
         tempy = get_temperatures(times)
                 
-        ratiomdark = np.log( (triggers - receiver)/(triggers - recmdark) )/np.log( (triggers - monitor)/(triggers - monmdark))
+        ratiomdark = np.log( rcor*(triggers - receiver)/(triggers - recmdark) )/np.log( mcor*(triggers - monitor)/(triggers - monmdark))
 
         alpha = 0.5
 
@@ -231,7 +260,7 @@ if RAW:
 
 if PCHANGE:
     plt.ylabel(r"Fractional Diff. [$\mu$]",size=14)
-    plt.ylim([-0.1, 0.1 ])
+    #plt.ylim([-0.15, 0.15 ])
     
 else:
     if not RAW:
@@ -239,7 +268,7 @@ else:
     plt.ylabel(r"$\mu$ Ratio",size=14)
 plt.xlabel("Time Stamp",size=14)
 
-if False: # (NEW_DRATE or  JUST_PLOT_DRATE) and not TPLOT:
+if (NEW_DRATE or  JUST_PLOT_DRATE) and not TPLOT:
     plt.plot([], [], color='k', marker='1', label="Mon Dark")
     plt.plot([], [], color='k', marker='2', label="Rec Dark")
 
@@ -247,7 +276,7 @@ if False: # (NEW_DRATE or  JUST_PLOT_DRATE) and not TPLOT:
 #plt.yscale('log')
 plt.gcf().autofmt_xdate()
 #plt.xlim([start, end])
-plt.legend(loc='lower left')
+plt.legend(loc='upper left')
 
 if TPLOT:
     plt.plot([], [], color='red', alpha=0.5, label="Temp")
@@ -255,17 +284,17 @@ if TPLOT:
     twax.plot(ttime, temperature, color='red', alpha=0.5)
     
 
-if False : # (NEW_DRATE or  JUST_PLOT_DRATE) and not TPLOT:
+if (NEW_DRATE or  JUST_PLOT_DRATE) and not TPLOT:
     
     plt.plot([], [], color='k', marker='1',  alpha=0.5, label="Monitor")
     plt.plot([], [], color='k', marker='2',  alpha=0.5, label="Receiver")
-    twax = plt.twinx()
+    #twax = plt.twinx()
     
-    twax.plot(dark_date, (mon_dark_raw/dark_triggers-np.mean(mon_dark_raw/dark_triggers))/np.mean(mon_dark_raw/dark_triggers) ,color='k', marker='1',  alpha=0.5)
-    twax.plot(dark_date, (rec_dark_raw/dark_triggers-np.mean(mon_dark_raw/dark_triggers))/np.mean(mon_dark_raw/dark_triggers) ,color='k', marker='2', alpha=0.5)
+    plt.plot(dark_date, 0.05*((mon_dark_raw/dark_triggers)-np.mean(mon_dark_raw/dark_triggers))/np.mean(mon_dark_raw/dark_triggers) ,color='k', marker='1',  alpha=0.5)
+    plt.plot(dark_date, 0.05*((rec_dark_raw/dark_triggers)-np.mean(rec_dark_raw/dark_triggers))/np.mean(rec_dark_raw/dark_triggers) ,color='k', marker='2', alpha=0.5)
 
     #twax.set_ylim([-3,3])
-    twax.set_ylabel("Light Leak norm by Mon")
+    #twax.set_ylabel("Light Leak norm by Mon")
 
 image_name = os.path.join(
     os.path.dirname(__file__),

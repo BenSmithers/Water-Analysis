@@ -7,13 +7,13 @@ from datetime import datetime
 
 NMERGE = 1
 start = datetime(year=2025, month=5, day=22, hour=2)
-end = datetime(year=2025, month=5, day=22, hour=7)
+end = datetime(year=2026, month=5, day=22, hour=7)
 TIME_CUT = False 
 wavelens = [450, 410, 365, 295, 278, 255, "n/a"]
 
 
-fname  = "data/picodat_run89_Supply Untreated_various_variousadc_mHz.dat"
-
+fname  = "data/picodat_run95_Supply Untreated_various_variousadc_mHz.dat"
+#fname = "data/picodat_run93_Supply Untreated_255nm_818adc_mHz.dat"
 data = np.loadtxt(fname, delimiter=",").T 
 
 
@@ -21,7 +21,7 @@ wave = data[7]
 alltime = np.array([datetime.fromtimestamp(entry + 9*3600) for entry in data[0]])
 
 for i in [-1,1,2,3,4,5]:
-    if i!=-1:
+    if i!=5:
         continue
     mask = wave ==i # np.logical_and( wave==i, data[1]>3.7e6)
     time_mask = np.logical_and( alltime>start , alltime<end)
@@ -54,7 +54,7 @@ for i in [-1,1,2,3,4,5]:
    # rec_to_plot/=np.max(rec_to_plot)
 
 
-    times= average(data[0][mask]+9*3600, NMERGE)
+    times= average(data[0][mask], NMERGE)
     mwaves = average(wave[mask], NMERGE) 
     times = np.array([datetime.fromtimestamp(entry) for entry in times])
 

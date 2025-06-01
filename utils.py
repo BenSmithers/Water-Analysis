@@ -2,8 +2,117 @@ import os
 import numpy as np 
 import datetime 
 import numpy as np
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import RegularGridInterpolator, CubicSpline
+import h5py as h5 
+
+
+from scipy.interpolate import griddata, RectBivariateSpline
+import numpy as np 
+import matplotlib.pyplot as plt 
+from math import log10,sqrt 
+
 logfile = os.path.join(os.path.dirname(__file__), "meta_history", "command.log")
+
+_cor_data = h5.File(
+    os.path.join(os.path.dirname(__file__), "toymc","data","correction_data.h5"),
+    "r"
+)
+
+class Irregular2DInterpolator:
+    """
+        This is used to make a 2D interpolator given a set of data that do not lie perfectly on a grid.
+        This is done using scipy griddata and scipy RectBivariateSpline 
+        interpolation can be `linear` or `cubic` 
+        if linear_x/y, then the interpolation is done in linear space. Otherwise, it's done in log space
+            setting this to False is helpful if your x/y values span many orders of magnitude 
+        if linear_values, then the values are calculated in linear space. Otherwise they'll be evaluated in log space- but returned in linear space 
+            setting this to False is helpful if your data values span many orders of magnitude 
+        By default, nans are replaced with zeros. 
+    """
+    def __init__(self, xdata:np.ndarray, 
+                 ydata:np.ndarray,
+                   values:np.ndarray, linear_x = True, linear_y = True, linear_values=True,
+                   replace_nans_with= 0.0, interpolation='linear'):
+
+        self._nomesh_x = xdata
+        self._nomesh_y = ydata 
+        self._values = values if linear_values else np.log10(values)
+        self._linear_values = linear_values
+        if linear_x:
+            self._xfine = np.linspace(min(self._nomesh_x), 
+                                      max(self._nomesh_x), 
+                                      int(sqrt(len(self._nomesh_x)))*2, endpoint=True)
+        else:
+            self._xfine = np.logspace(log10(min(self._nomesh_x)), 
+                                      log10(max(self._nomesh_x)), 
+                                      int(sqrt(len(self._nomesh_x)))*2, endpoint=True)
+
+        
+        if linear_y:
+            self._yfine = np.linspace(min(self._nomesh_y), 
+                                      max(self._nomesh_y), 
+                                      int(sqrt(len(self._nomesh_y)))*2, endpoint=True)
+        else:
+            self._yfine = np.logspace(log10(min(self._nomesh_y)), 
+                                      log10(max(self._nomesh_y)), 
+                                      int(sqrt(len(self._nomesh_y)))*2, endpoint=True)
+
+        mesh_x, mesh_y = np.meshgrid(self._xfine, self._yfine)
+
+        # usee grideval to evaluate a grid of points 
+        self._grid_eval = griddata(
+            points=np.transpose([self._nomesh_x, self._nomesh_y]),
+            values=self._values, 
+            xi=(mesh_x, mesh_y),
+            method=interpolation,
+            fill_value=1.0
+        )
+        
+        # if there are any nans, scipy 
+        if np.any(np.isnan(self._grid_eval)):
+            print("Warning! Nans were found in the evaluation of griddata - we're replacing those with zeros")
+        self._grid_eval[np.isnan(self._grid_eval)] = replace_nans_with
+
+        # and then prepare an interpolator 
+        self._data_int = RectBivariateSpline(
+            self._xfine, 
+            self._yfine, 
+            self._grid_eval.T
+        )
+    def plot_mesh(self):
+        plt.pcolormesh(self._xfine, self._yfine, self._grid_eval.T)  
+        plt.colorbar()
+        plt.show()
+
+    def __call__(self, xs, ys, grid=False):
+        if self._linear_values:
+            return self._data_int( xs, ys ,grid=grid)
+        else:
+            return 10**self._data_int( xs, ys , grid=grid)
+
+true_signal = _cor_data["true_led"]
+true_leak = _cor_data["true_leak"]
+measured = np.array(_cor_data["measured"])
+#for i in range(5):
+#    measured[i*6:i*6+6] /= measured[i*6]    
+
+__effective_scaler = Irregular2DInterpolator(
+    measured, true_leak, true_signal/measured,
+    replace_nans_with=1.0
+)
+
+if __name__=="__main__":
+    __effective_scaler.plot_mesh()
+
+def apply_correction(measured, dark):
+    """
+        applies a correction based on the intensity of the hitrate 
+
+        dark is the number of dark PEs per trigger signal
+        will return a correction factor to make things right 
+    """
+
+    return __effective_scaler(measured, dark)
 
 
 
@@ -67,8 +176,8 @@ def get_valid(trigs, hits, is_rec):
         min_time = 113
         max_time = 140
     else:
-        min_time = 14
-        max_time = 40
+        min_time = 35
+        max_time = 50
 
     is_valid = np.zeros_like(hits)
     is_valid = is_valid.astype(bool)
@@ -108,7 +217,7 @@ def get_event_time(times, text_key):
         brk = line.split(" : ")
         if text_key in brk[1]:
 
-            timestamps.append(datetime.datetime.fromisoformat(brk[0]).timestamp()-9*3600)
+            timestamps.append(datetime.datetime.fromisoformat(brk[0]).timestamp()-0*3600)
     gstimes = np.array(timestamps)
     mask = np.logical_and(gstimes>mint, gstimes<maxt)
     return gstimes[mask]
@@ -143,6 +252,15 @@ __temps = __data[5]
 __terpo = CubicSpline(__times, __temps, extrapolate=True)
 def get_temperatures(sample_times:np.ndarray):
     return __terpo(sample_times)
+
+def get_light(sample_times, pressure_no):
+    # pressure shoudl be 1-4
+    if pressure_no<0 or pressure_no>1:
+        raise IndexError("Invalid light number, {}".format(pressure_no))
+    else:
+        __pressure = __data[12+pressure_no]
+        terpo = CubicSpline(__times, __pressure, extrapolate=True)
+        return terpo(sample_times)
 
 def get_pressures(sample_times, pressure_no):
     # pressure shoudl be 1-4
