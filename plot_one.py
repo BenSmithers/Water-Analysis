@@ -6,7 +6,7 @@ from utils import get_start_times, get_color, get_temperatures, get_event_time, 
 from datetime import datetime
 from scipy.optimize import minimize
 from scipy.interpolate import CubicSpline
-from utils import apply_correction
+from utils import apply_correction, get_light
 import os 
 plt.style.use("wms.mplstyle")
 wavelens = [450, 410, 365, 295, 278, 255]
@@ -18,8 +18,9 @@ PCHANGE = True
 RAW = False
 NEW_DRATE = False
 JUST_PLOT_DRATE =  False
-TPLOT = False  
+TPLOT = False     
 GAD = True
+LIGHT = True
 correction = False
 
 baselines = [
@@ -71,9 +72,11 @@ if True:
 #start = datetime(year=2025, month=4, day=12, hour=10)
 
 #start = datetime(year=2025, month=4, day=3, hour=15)
-start = datetime(year=2025, month=4, day=5,hour=2 )
-start = datetime(year=2025, month=5, day=18, hour=17)
-end = datetime(year=2025, month=5, day=18, hour=20)
+start = datetime(year=2025, month=4, day=4,hour=2 )
+start = datetime(year=2025, month=5, day=3, hour=1)
+start = datetime(year=2025, month=4, day=5, hour=11) # for the stagnation
+start = datetime(year=2025, month=4, day=25, hour=16)
+end = datetime(year=2025, month=6, day=2, hour=0)
 
 
 
@@ -90,16 +93,20 @@ files = ["data/picodat_run89_Supply Untreated_various_variousadc_mHz.dat"]
 files = ["data/picodat_run87_Supply Untreated_various_variousadc_mHz.dat",]
 files = ["data/picodat_run95_Supply Untreated_various_variousadc_mHz.dat",]
 
+files = ["data/picodat_run96_Supply Untreated_various_variousadc_mHz.dat",]
+#files = ["data/picodat_run66_Return Untreated_various_variousadc_mHz.dat",]
+
+#files = ["data/picodat_run73_Supply Untreated_various_variousadc_mHz.dat"]
 #files = ["data/picodat_run62_Supply Untreated_365nm_715adc_mHz.dat"]
 #files = ["data/picodat_run61_Supply Untreated_various_variousadc_mHz.dat"]
 
 run_no = ""
 
-shift = 0*3600
+shift = 8*3600
 plt.clf()
 plt.close()
 
-plt.figure(figsize=(9,6))
+plt.figure(figsize=(10,6))
 for ifile, fname in enumerate(files):
 
 
@@ -108,17 +115,26 @@ for ifile, fname in enumerate(files):
     run_no = os.path.split(fname)[1].split("_")[1]
 
     if TPLOT:
-        ttime = average(data[0]+shift, NMERGE) 
+        ttime = average(data[0], NMERGE) 
         temperature = get_temperatures(ttime)
 
         ttime = ttime 
-        ttime = np.array([datetime.fromtimestamp(entry) for entry in ttime])
-        mask = ttime > start 
+        ttime = np.array([datetime.fromtimestamp(entry+shift) for entry in ttime])
+        mask = np.logical_and( ttime > start , ttime<end)
 
         if TIME_CUT:
             ttime = ttime[mask]
             temperature = temperature[mask]
         
+    if LIGHT:
+        ttime = average(data[0], NMERGE)
+        light =  get_light(ttime, 0)
+        ttime = np.array([datetime.fromtimestamp(entry+shift) for entry in ttime])
+        mask = np.logical_and( ttime > start , ttime<end)
+        if TIME_CUT:
+            ttime = ttime[mask]
+            light = light[mask]
+
 
     wave = data[7]
     alltime = np.array([datetime.fromtimestamp(entry+shift) for entry in data[0]])
@@ -194,7 +210,7 @@ for ifile, fname in enumerate(files):
             
         if FIT_DARKNOISE:
                     
-            #res = find_constant(monitor, mon_dark, receiver, rec_dark)
+            res = find_constant(monitor, mon_dark, receiver, rec_dark)
             #res = [6.5,5]
             #res = [3.8, 3.8]
             #res= [0.75, 0.5]
@@ -237,12 +253,12 @@ for ifile, fname in enumerate(files):
         else:
             if PCHANGE:
                 print("{} nm : ".format(wavelens[i]),np.nanmean(ratiomdark))
-                #plt.errorbar(times, (ratiomdark -np.nanmean(ratiomdark))/np.nanmean(ratiomdark), yerr= None, color=get_color(i+1, 8, 'nipy_spectral_r'),label="{} nm".format(wavelens[i]), marker='d', ls='-', alpha=alpha)
-                plt.errorbar(times, (ratiomdark -baselines[i])/baselines[i], yerr= None, color=get_color(i+1, 8, 'nipy_spectral_r'),label="{} nm".format(wavelens[i]), marker='d', ls='-', alpha=alpha)
+                plt.errorbar(times, (ratiomdark -np.nanmean(ratiomdark))/np.nanmean(ratiomdark), yerr= None, color=get_color(i+1, 8, 'nipy_spectral_r'),label="{} nm".format(wavelens[i]), marker='d', ls='-', alpha=alpha)
+                #plt.errorbar(times, (ratiomdark -baselines[i])/baselines[i], yerr= None, color=get_color(i+1, 8, 'nipy_spectral_r'),label="{} nm".format(wavelens[i]), marker='d', ls='-', alpha=alpha)
             else:
                 plt.errorbar(times,ratiomdark, yerr= None, color=get_color(i+1, 8, 'nipy_spectral_r'),label="{} nm".format(wavelens[i]), marker='d', ls='', alpha=alpha)
 
-    plt.vlines(fill_end, -0.5, 0.2, 'gray', alpha=0.5, ls='--', label="Pump Off")
+    #plt.vlines(fill_end, -0.5, 0.2, 'gray', alpha=0.5, ls='--', label="Pump Off")
 
 
 if False:
@@ -260,7 +276,7 @@ if RAW:
 
 if PCHANGE:
     plt.ylabel(r"Fractional Diff. [$\mu$]",size=14)
-    #plt.ylim([-0.15, 0.15 ])
+    #plt.ylim([-0.05, 0.05 ])
     
 else:
     if not RAW:
@@ -282,7 +298,11 @@ if TPLOT:
     plt.plot([], [], color='red', alpha=0.5, label="Temp")
     twax = plt.twinx()
     twax.plot(ttime, temperature, color='red', alpha=0.5)
-    
+if LIGHT:
+    plt.plot([], [], color='red', alpha=0.5, label="Light")
+    twax = plt.twinx()
+    mlight =light/3000
+    twax.plot(ttime,mlight , color='red', alpha=0.5)
 
 if (NEW_DRATE or  JUST_PLOT_DRATE) and not TPLOT:
     
