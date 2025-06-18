@@ -202,11 +202,9 @@ def get_valid(trigs, hits, is_rec):
 
     return is_valid, np.logical_not(is_valid) 
 
-def get_event_time(times, text_key):
+def get_event_time(times, text_key, shift=9*3600):
     mint = times.min()
     maxt = times.max()
-    print(mint)
-    print(maxt)
 
     _obj = open(logfile,'rt')
     lines = _obj.readlines()
@@ -217,7 +215,7 @@ def get_event_time(times, text_key):
         brk = line.split(" : ")
         if text_key in brk[1]:
 
-            timestamps.append(datetime.datetime.fromisoformat(brk[0]).timestamp()-0*3600)
+            timestamps.append(datetime.datetime.fromisoformat(brk[0]).timestamp()-shift)
     gstimes = np.array(timestamps)
     mask = np.logical_and(gstimes>mint, gstimes<maxt)
     return gstimes[mask]
