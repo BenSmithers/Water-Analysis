@@ -18,40 +18,49 @@ baselines = [
     0.2344264
 ]
 baselines = [np.nan, 1.16484, 0.758492, 0.277763, 0.2188047, 0.124414965]
+baselines = [np.nan, 1.1716711377980353, 0.7895983483666472, 0.3220842312888948,0.2798273609852598,0.23291601406470056]
 
-NMERGE = 1
+NMERGE = 10
 FIT_DARKNOISE = False
 TIME_CUT = True
 PCHANGE = True
 RAW = False
 NEW_DRATE = False
 JUST_PLOT_DRATE =  False
-TPLOT = False 
+TPLOT = True 
+LATEST = False 
+
+shift = 3600*9
 
 #start = datetime(year=2025, month=4, day=12, hour=10)
 
 #start = datetime(year=2025, month=4, day=3, hour=15)
-start = datetime(year=2025, month=5, day=21, hour=22)
-end = datetime(year=2026, month=5, day=6, hour=12)
+if LATEST:
+    start = datetime(year=2025, month=5, day=31, hour=18)
+    end = datetime(year=2026, month=6, day=2, hour=8)
+else:
+    start = datetime(year=2025, month=5, day=21, hour=23)
+    end = datetime(year=2026, month=5, day=6, hour=12)
 
-
+if True:
+    start = datetime(year=2025, month=1, day=21, hour=23)
+    end = datetime(year=2025, month=5, day=19, hour=00)
 
 files = ["data/picodat_run67_Return Untreated_various_variousadc_mHz.dat",
             "data/picodat_run68_Supply Untreated_various_variousadc_mHz.dat"]
 
 #files = ["data/picodat_run73_Supply Untreated_various_variousadc_mHz.dat"]
-files = ["data/picodat_run75_Supply Untreated_various_variousadc_mHz.dat",
-         "data/picodat_run77_Supply Untreated_various_variousadc_mHz.dat",
-         "data/picodat_run78_Supply Untreated_various_variousadc_mHz.dat",
-         "data/picodat_run87_Supply Untreated_various_variousadc_mHz.dat",
-         "data/picodat_run84_Supply Untreated_various_variousadc_mHz.dat"]
-files = ["data/picodat_run87_Supply Untreated_various_variousadc_mHz.dat",
-         "data/picodat_run88_Supply Untreated_various_variousadc_mHz.dat",
-        "data/picodat_run89_Supply Untreated_various_variousadc_mHz.dat",
-        "data/picodat_run90_Supply Untreated_various_variousadc_mHz.dat",
-        "data/picodat_run91_Supply Untreated_various_variousadc_mHz.dat",]
-
-#files = ["data/picodat_run75_Supply Untreated_various_variousadc_mHz.dat",]
+files = ["data/picodat_run84_Supply Untreated_various_variousadc_mHz.dat",
+         "data/picodat_run87_Supply Untreated_various_variousadc_mHz.dat",]
+         #"data/picodat_run84_Supply Untreated_various_variousadc_mHz.dat"]
+if False:
+    files = ["data/picodat_run87_Supply Untreated_various_variousadc_mHz.dat",
+            "data/picodat_run88_Supply Untreated_various_variousadc_mHz.dat",
+            "data/picodat_run89_Supply Untreated_various_variousadc_mHz.dat",
+            "data/picodat_run90_Supply Untreated_various_variousadc_mHz.dat",
+            "data/picodat_run91_Supply Untreated_various_variousadc_mHz.dat",
+            "data/picodat_run95_Supply Untreated_various_variousadc_mHz.dat",]
+    #files = ["data/picodat_run75_Supply Untreated_various_variousadc_mHz.dat",]
 
 #files = ["data/picodat_run62_Supply Untreated_365nm_715adc_mHz.dat"]
 #files = ["data/picodat_run61_Supply Untreated_various_variousadc_mHz.dat"]
@@ -61,6 +70,10 @@ plt.clf()
 plt.close()
 
 plt.figure(figsize=(9,6))
+if TPLOT:
+    plt.plot([], [], color='red', alpha=0.5, label="Temp")
+    twax = plt.twinx()
+
 for ifile, fname in enumerate(files):
 
 
@@ -69,29 +82,31 @@ for ifile, fname in enumerate(files):
     run_no = os.path.split(fname)[1].split("_")[1]
 
     if TPLOT:
-        ttime = average(data[0], NMERGE) 
+        ttime = average(data[0], NMERGE) +shift
         temperature = get_temperatures(ttime)
 
         ttime = ttime 
         ttime = np.array([datetime.fromtimestamp(entry) for entry in ttime])
-        mask = ttime > start 
+        mask = np.logical_and( ttime > start , ttime<end)
 
         if TIME_CUT:
             ttime = ttime[mask]
             temperature = temperature[mask]
         
-
+        print("t plot!", len(ttime),len(temperature))
+        twax.plot(ttime, 0.1+(temperature-26.79)/26.79, color='red', alpha=0.5)
+        
     wave = data[7]
-    alltime = np.array([datetime.fromtimestamp(entry) for entry in data[0]])
+    alltime = np.array([datetime.fromtimestamp(entry+shift) for entry in data[0]])
 
     if NEW_DRATE or JUST_PLOT_DRATE:
         
         mask = wave==-1 
-        dark_time = np.array([datetime.fromtimestamp(entry) for entry in data[0]])
+        dark_time = np.array([datetime.fromtimestamp(entry+shift) for entry in data[0]])
         if TIME_CUT:
             mask = np.logical_and( np.logical_and(dark_time> start , dark_time<end ), mask)
 
-        dark_time =average(data[0][mask], NMERGE)
+        dark_time =average(data[0][mask], NMERGE)+shift
         
         rec_dark_raw = fold(data[5][mask], NMERGE)
         mon_dark_raw = fold(data[4][mask], NMERGE)
@@ -103,9 +118,12 @@ for ifile, fname in enumerate(files):
 
 
     fill_end_key = "pu1 off signal sent"
-    fill_end    = get_event_time(data[0], fill_end_key)
-    fill_end = np.array([datetime.fromtimestamp(entry) for entry in fill_end])
     
+    fill_end    = get_event_time(data[0], fill_end_key, shift)
+    fill_end = np.array([datetime.fromtimestamp(entry) for entry in fill_end])
+    time_mask = np.logical_and( fill_end>start , fill_end<end)    
+    fill_end = fill_end[time_mask]
+
     for i in range(1, 6):
 
         mask = wave ==i # np.logical_and( wave==i, data[1]>3.7e6)
@@ -143,7 +161,7 @@ for ifile, fname in enumerate(files):
         
         monitor = fold(data[2][mask], NMERGE)
         receiver = fold(data[3][mask], NMERGE)
-        times= average(data[0][mask], NMERGE)
+        times= average(data[0][mask], NMERGE)+shift
         if NEW_DRATE:
             mon_dark = mon_dark_sp(times)
             rec_dark = rec_dark_sp(times)
@@ -180,7 +198,7 @@ for ifile, fname in enumerate(files):
         if len(ratiomdark)==0:
             continue
         if RAW:
-            plt.plot([], [], color=get_color(i+1, 8, 'nipy_spectral_r') ,label="{} nm".format(wavelens[i]), ls='-')
+            plt.plot([], [], color=get_color(i+1, 8, 'nipy_spectral_r'), ls='-')
             if PCHANGE:
                 plt.plot(times, (monitor - np.nanmean(monitor))/np.nanmean(monitor),  color=get_color(i+1, 8, 'nipy_spectral_r'), marker='d', ls='', alpha=1.0)
                 plt.plot(times, (receiver - np.nanmean(receiver))/np.nanmean(receiver),  color=get_color(i+1, 8, 'nipy_spectral_r'), marker='o', ls='', alpha=1.0)
@@ -191,10 +209,13 @@ for ifile, fname in enumerate(files):
         else:
             if PCHANGE:
                 print("{} nm : ".format(wavelens[i]),np.nanmean(ratiomdark))
-                #plt.errorbar(times, (ratiomdark -np.nanmean(ratiomdark))/np.nanmean(ratiomdark), yerr= None, color=get_color(i+1, 8, 'nipy_spectral_r'),label="{} nm".format(wavelens[i]), marker='d', ls='-', alpha=alpha)
+                #plt.errorbar(times, (ratiomdark -np.nanmean(ratiomdark))/np.nanmean(ratiomdark), yerr= None, color=get_color(i+1, 8, 'nipy_spectral_r'), marker='d', ls='-', alpha=alpha)
                 plt.errorbar(times, (ratiomdark -baselines[i])/baselines[i], yerr= None, color=get_color(i+1, 8, 'nipy_spectral_r'), marker='d', ls='-', alpha=alpha)
             else:
                 plt.errorbar(times,ratiomdark, yerr= None, color=get_color(i+1, 8, 'nipy_spectral_r'), marker='d', ls='', alpha=alpha)
+
+        
+
 
 for i in range(1,6):
     plt.plot([], [],  color=get_color(i+1, 8, 'nipy_spectral_r'),label="{} nm".format(wavelens[i]), marker='d', ls='-', alpha=alpha)
@@ -214,13 +235,14 @@ if RAW:
 
 if PCHANGE:
     plt.ylabel(r"Fractional Diff. [$\mu$]",size=14)
-    #plt.ylim([-0.2, 0.2 ])
+    #plt.ylim([-0.1, 0.1 ])
     
 else:
     if not RAW:
         plt.ylim([0.0, 1.4])
     plt.ylabel(r"$\mu$ Ratio",size=14)
 plt.xlabel("Time Stamp",size=14)
+
 
 #plt.plot([], [], color='k', marker='1', label="Mon Dark")
 #plt.plot([], [], color='k', marker='2', label="Rec Dark")
@@ -229,13 +251,8 @@ plt.xlabel("Time Stamp",size=14)
 #plt.yscale('log')
 plt.gcf().autofmt_xdate()
 #plt.xlim([start, end])
-plt.legend(loc='lower left')
+plt.legend(loc='upper right')
 
-if TPLOT:
-    plt.plot([], [], color='red', alpha=0.5, label="Temp")
-    twax = plt.twinx()
-    twax.plot(ttime, temperature, color='red', alpha=0.5)
-    
 
 if (NEW_DRATE or  JUST_PLOT_DRATE) and not TPLOT:
     twax = plt.twinx()
